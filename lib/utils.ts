@@ -22,3 +22,20 @@ export function parseJSON<T>(str: string, fallback: T): T {
     return fallback;
   }
 }
+
+export function parseJsonFields<T extends Record<string, unknown>>(
+  record: T,
+  fields: (keyof T)[]
+): T {
+  const result = { ...record };
+  for (const field of fields) {
+    if (typeof result[field] === "string") {
+      try {
+        result[field] = JSON.parse(result[field] as string) as T[keyof T];
+      } catch {
+        // leave as string if parse fails
+      }
+    }
+  }
+  return result;
+}
