@@ -119,8 +119,6 @@ async function executeNode(
   const node = plan.nodeMap[nodeId];
   const blockStart = Date.now();
 
-  context.onBlockStatusChange?.(nodeId, "running");
-
   // Collect input from upstream nodes
   const upstreamIds = plan.reverseAdj[nodeId] ?? [];
   let blockInput: unknown;
@@ -144,16 +142,19 @@ async function executeNode(
 
   const handler = blockHandlers[node.type];
 
+  // Notify running — include the resolved input so DB/SSE records it
+  context.onBlockStatusChange?.(nodeId, "running", { input: blockInput });
+
   try {
     const output = await handler(blockInput, resolvedConfig, context);
     const durationMs = Date.now() - blockStart;
     context.results[nodeId] = { output, status: "completed", durationMs };
-    context.onBlockStatusChange?.(nodeId, "completed", { output, durationMs });
+    context.onBlockStatusChange?.(nodeId, "completed", { input: blockInput, output, durationMs });
   } catch (err: unknown) {
     const durationMs = Date.now() - blockStart;
     const error = err instanceof Error ? err.message : String(err);
     context.results[nodeId] = { output: null, status: "failed", error, durationMs };
-    context.onBlockStatusChange?.(nodeId, "failed", { error, durationMs });
+    context.onBlockStatusChange?.(nodeId, "failed", { input: blockInput, error, durationMs });
   }
 }
 
