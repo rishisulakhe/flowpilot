@@ -1,25 +1,60 @@
-import type { BlockHandler } from "../types";
 import { resolveTemplates } from "../template-resolver";
+import type { BlockHandler } from "../types";
 
 export const httpHandler: BlockHandler = async (_input, config, context) => {
-  const { method, url, headers, body } = config as {
-    method: string;
-    url: string;
-    headers?: Record<string, string>;
-    body?: string;
+  const { method = "GET", url, headers, body } = config as {
+    method?: string;
+    url: unknown;
+    headers?: unknown;
+    body?: unknown;
   };
 
-  const resolvedUrl = resolveTemplates(url ?? "", context) as string;
-  const resolvedHeaders = resolveTemplates(headers ?? {}, context) as Record<string, string>;
-  const resolvedBody = resolveTemplates(body ?? "", context);
+  const resolvedUrl = resolveTemplates(url, context);
+  const resolvedHeaders = resolveTemplates(headers ?? {}, context);
+  const resolvedBody = resolveTemplates(body, context);
 
-  // TODO: Replace with real fetch() in a later step
-  await new Promise((resolve) => setTimeout(resolve, 300));
+  if (!resolvedUrl || typeof resolvedUrl !== "string") {
+    throw new Error("HTTP block requires a valid URL");
+  }
 
-  return {
-    status: 200,
-    data: `[Mock HTTP Response] ${method} ${resolvedUrl}`,
-    headers: resolvedHeaders,
-    body: resolvedBody,
-  };
+  try {
+    const reqHeaders: Record<string, string> =
+      typeof resolvedHeaders === "object" && resolvedHeaders !== null
+        ? { ...(resolvedHeaders as Record<string, string>) }
+        : {};
+
+    const fetchOptions: RequestInit = {
+      method: (method as string).toUpperCase(),
+      headers: reqHeaders,
+    };
+
+    if (
+      ["POST", "PUT", "PATCH"].includes((method as string).toUpperCase()) &&
+      resolvedBody
+    ) {
+      fetchOptions.body =
+        typeof resolvedBody === "string"
+          ? resolvedBody
+          : JSON.stringify(resolvedBody);
+      if (!reqHeaders["Content-Type"]) {
+        reqHeaders["Content-Type"] = "application/json";
+      }
+    }
+
+    const response = await fetch(resolvedUrl, fetchOptions);
+
+    const contentType = response.headers.get("content-type") ?? "";
+    const data = contentType.includes("application/json")
+      ? await response.json()
+      : await response.text();
+
+    return {
+      status: response.status,
+      statusText: response.statusText,
+      data,
+    };
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : String(error);
+    throw new Error(`HTTP request failed: ${message}`);
+  }
 };

@@ -142,11 +142,19 @@ async function executeNode(
 
   const handler = blockHandlers[node.type];
 
+  // Wrap onBlockStream so the handler doesn't need to know its own blockId
+  const blockContext: ExecutionContext = {
+    ...context,
+    onBlockStream: context.onBlockStream
+      ? (_, token) => context.onBlockStream!(nodeId, token)
+      : undefined,
+  };
+
   // Notify running — include the resolved input so DB/SSE records it
   context.onBlockStatusChange?.(nodeId, "running", { input: blockInput });
 
   try {
-    const output = await handler(blockInput, resolvedConfig, context);
+    const output = await handler(blockInput, resolvedConfig, blockContext);
     const durationMs = Date.now() - blockStart;
     context.results[nodeId] = { output, status: "completed", durationMs };
     context.onBlockStatusChange?.(nodeId, "completed", { input: blockInput, output, durationMs });
