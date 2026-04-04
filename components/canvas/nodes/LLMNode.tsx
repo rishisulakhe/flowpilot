@@ -1,11 +1,10 @@
 "use client";
 
 import { Sparkles } from "lucide-react";
-import { type NodeProps } from "@xyflow/react";
+import type { AnyNodeProps } from "./BaseNode";
 import { BaseNode } from "./BaseNode";
-import type { WorkflowNodeData } from "@/stores/workflow-store";
 
-export function LLMNode(props: NodeProps<WorkflowNodeData>) {
+export function LLMNode(props: AnyNodeProps) {
   const { provider, model } = props.data.config as { provider?: string; model?: string };
 
   return (

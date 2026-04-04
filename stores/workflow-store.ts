@@ -53,7 +53,7 @@ export const useWorkflowStore = create<WorkflowState>((set) => ({
   isSaved: true,
 
   onNodesChange: (changes) =>
-    set((s) => ({ nodes: applyNodeChanges(changes, s.nodes), isSaved: false })),
+    set((s) => ({ nodes: applyNodeChanges(changes, s.nodes) as WorkflowNode[], isSaved: false })),
 
   onEdgesChange: (changes) =>
     set((s) => ({ edges: applyEdgeChanges(changes, s.edges), isSaved: false })),

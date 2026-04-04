@@ -1,11 +1,10 @@
 "use client";
 
 import { Code2 } from "lucide-react";
-import { type NodeProps } from "@xyflow/react";
+import type { AnyNodeProps } from "./BaseNode";
 import { BaseNode } from "./BaseNode";
-import type { WorkflowNodeData } from "@/stores/workflow-store";
 
-export function TransformNode(props: NodeProps<WorkflowNodeData>) {
+export function TransformNode(props: AnyNodeProps) {
   const { expression = "" } = props.data.config as { expression?: string };
 
   return (

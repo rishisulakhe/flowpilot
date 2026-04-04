@@ -1,11 +1,10 @@
 "use client";
 
 import { Globe } from "lucide-react";
-import { type NodeProps } from "@xyflow/react";
+import type { AnyNodeProps } from "./BaseNode";
 import { BaseNode } from "./BaseNode";
-import type { WorkflowNodeData } from "@/stores/workflow-store";
 
-export function HttpNode(props: NodeProps<WorkflowNodeData>) {
+export function HttpNode(props: AnyNodeProps) {
   const { method = "GET", url = "" } = props.data.config as { method?: string; url?: string };
   const preview = `${method} ${url || "{{url}}"}`.slice(0, 28);
 

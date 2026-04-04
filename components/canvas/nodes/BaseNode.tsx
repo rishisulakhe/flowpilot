@@ -7,8 +7,11 @@ import { useExecutionStore } from "@/stores/execution-store";
 import type { WorkflowNodeData } from "@/stores/workflow-store";
 import { CheckCircle, XCircle } from "lucide-react";
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export type AnyNodeProps = NodeProps<any>;
+
 interface BaseNodeProps {
-  nodeProps: NodeProps<WorkflowNodeData>;
+  nodeProps: AnyNodeProps;
   accentColor: string;
   typeLabel: string;
   icon: ReactNode;
@@ -28,7 +31,8 @@ export function BaseNode({
   hasOutput = true,
   outputHandles,
 }: BaseNodeProps) {
-  const { id, data, selected } = nodeProps;
+  const { id, selected } = nodeProps;
+  const data = nodeProps.data as WorkflowNodeData;
   const { blockStatuses, streamingTokens } = useExecutionStore();
   const blockState = blockStatuses[id];
   const status = blockState?.status;

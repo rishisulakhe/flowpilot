@@ -1,11 +1,10 @@
 "use client";
 
 import { Merge } from "lucide-react";
-import { type NodeProps } from "@xyflow/react";
+import type { AnyNodeProps } from "./BaseNode";
 import { BaseNode } from "./BaseNode";
-import type { WorkflowNodeData } from "@/stores/workflow-store";
 
-export function MergeNode(props: NodeProps<WorkflowNodeData>) {
+export function MergeNode(props: AnyNodeProps) {
   const { strategy = "combine" } = props.data.config as { strategy?: string };
 
   return (

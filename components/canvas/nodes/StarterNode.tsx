@@ -1,11 +1,10 @@
 "use client";
 
 import { Zap } from "lucide-react";
-import { type NodeProps } from "@xyflow/react";
+import type { AnyNodeProps } from "./BaseNode";
 import { BaseNode } from "./BaseNode";
-import type { WorkflowNodeData } from "@/stores/workflow-store";
 
-export function StarterNode(props: NodeProps<WorkflowNodeData>) {
+export function StarterNode(props: AnyNodeProps) {
   return (
     <BaseNode
       nodeProps={props}

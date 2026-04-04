@@ -1,11 +1,10 @@
 "use client";
 
 import { Flag } from "lucide-react";
-import { type NodeProps } from "@xyflow/react";
+import type { AnyNodeProps } from "./BaseNode";
 import { BaseNode } from "./BaseNode";
-import type { WorkflowNodeData } from "@/stores/workflow-store";
 
-export function OutputNode(props: NodeProps<WorkflowNodeData>) {
+export function OutputNode(props: AnyNodeProps) {
   const { format = "text" } = props.data.config as { format?: string };
 
   return (
