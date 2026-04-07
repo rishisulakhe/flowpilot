@@ -1,7 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { useParams } from "next/navigation";
 import Link from "next/link";
 import {
   ReactFlow,
@@ -16,7 +16,7 @@ import {
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 
-import { Settings, History, Share2, Play, Save, Search, ArrowLeft, ChevronDown } from "lucide-react";
+import { Settings, History, Share2, Play, Save, Search, ArrowLeft, Sparkles, Keyboard } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -31,6 +31,8 @@ import { Textarea } from "@/components/ui/textarea";
 
 import { BlockLibrary } from "@/components/canvas/BlockLibrary";
 import { BlockConfigPanel } from "@/components/canvas/BlockConfigPanel";
+import { RunLogPanel } from "@/components/canvas/RunLogPanel";
+import { CopilotPanel } from "@/components/canvas/CopilotPanel";
 import { StarterNode } from "@/components/canvas/nodes/StarterNode";
 import { LLMNode } from "@/components/canvas/nodes/LLMNode";
 import { HttpNode } from "@/components/canvas/nodes/HttpNode";
@@ -43,27 +45,25 @@ import { CustomEdge } from "@/components/canvas/edges/CustomEdge";
 import { useWorkflowStore } from "@/stores/workflow-store";
 import { useExecutionStore } from "@/stores/execution-store";
 import { generateBlockId } from "@/lib/utils";
+import { consumeSSE } from "@/lib/sse-client";
 import type { BlockType } from "@/types/workflow";
 
-// Node/edge type registries — must be stable (outside component or useMemo)
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const NODE_TYPES: NodeTypes = {
-  starter: StarterNode as any,
-  llm: LLMNode as any,
-  http: HttpNode as any,
+  starter:   StarterNode as any,
+  llm:       LLMNode as any,
+  http:      HttpNode as any,
   condition: ConditionNode as any,
   transform: TransformNode as any,
-  merge: MergeNode as any,
-  output: OutputNode as any,
+  merge:     MergeNode as any,
+  output:    OutputNode as any,
 };
 
-const EDGE_TYPES: EdgeTypes = {
-  custom: CustomEdge,
-};
+const EDGE_TYPES: EdgeTypes = { custom: CustomEdge };
 
 const DEFAULT_CONFIGS: Record<BlockType, Record<string, unknown>> = {
   starter:   {},
-  llm:       { provider: "openai", model: "gpt-4o-mini", systemPrompt: "", userPrompt: "", temperature: 0.7, maxTokens: 1024 },
+  llm:       { provider: "google", model: "gemini-2.5-flash", systemPrompt: "", userPrompt: "", temperature: 0.7, maxTokens: 1024 },
   http:      { method: "GET", url: "", headers: "{}", body: "" },
   condition: { expression: "" },
   transform: { expression: "" },
@@ -76,28 +76,91 @@ const BLOCK_LABELS: Record<BlockType, string> = {
   condition: "Condition", transform: "Transform", merge: "Merge", output: "Output",
 };
 
-// ─── Inner canvas (needs ReactFlowProvider context) ─────────────────────────
+// ─── Inner canvas ────────────────────────────────────────────────────────────
 
 function CanvasInner({ workflowId }: { workflowId: string }) {
-  const router = useRouter();
-  const { screenToFlowPosition } = useReactFlow();
+  const { screenToFlowPosition, fitView } = useReactFlow();
 
   const {
     workflowId: storeId, workflowName, nodes, edges, selectedNodeId, isSaved,
     onNodesChange, onEdgesChange, onConnect,
-    addNode, setSelectedNode, setWorkflowName, setSaved, loadWorkflow,
+    addNode, removeNode, setSelectedNode, setWorkflowName, setSaved, loadWorkflow,
   } = useWorkflowStore();
 
-  const { isRunning, startExecution, updateBlockStatus, appendStreamToken, completeExecution } = useExecutionStore();
+  const {
+    isRunning,
+    startExecution, updateBlockStatus, appendStreamToken, completeExecution, resetExecution,
+  } = useExecutionStore();
 
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
   const [runDialogOpen, setRunDialogOpen] = useState(false);
   const [runInput, setRunInput] = useState("");
   const [saveStatus, setSaveStatus] = useState<"saved" | "saving" | "unsaved">("saved");
+  const [copilotOpen, setCopilotOpen] = useState(false);
+  const [shortcutsOpen, setShortcutsOpen] = useState(false);
 
-  // Auto-save debounce
+  // Show run log when we have an active or just-completed execution
+  const { executionResult } = useExecutionStore();
+  const showRunLog = isRunning || !!executionResult;
+
   const autoSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // ── Keyboard shortcuts ────────────────────────────────────────────────────
+
+  useEffect(() => {
+    function onKeyDown(e: KeyboardEvent) {
+      const target = e.target as HTMLElement;
+      const inInput = target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable;
+      const meta = e.metaKey || e.ctrlKey;
+
+      // Cmd/Ctrl + S → Save
+      if (meta && e.key === "s") {
+        e.preventDefault();
+        handleSave(false);
+        return;
+      }
+      // Cmd/Ctrl + Enter → Run dialog
+      if (meta && e.key === "Enter") {
+        e.preventDefault();
+        if (!isRunning) setRunDialogOpen(true);
+        return;
+      }
+      // Escape → deselect / close panels
+      if (e.key === "Escape") {
+        if (copilotOpen) { setCopilotOpen(false); return; }
+        setSelectedNode(null);
+        return;
+      }
+      if (inInput) return;
+      // Delete / Backspace → delete selected node
+      if ((e.key === "Delete" || e.key === "Backspace") && selectedNodeId) {
+        removeNode(selectedNodeId);
+        return;
+      }
+      // Cmd/Ctrl + D → duplicate selected node
+      if (meta && e.key === "d" && selectedNodeId) {
+        e.preventDefault();
+        const node = nodes.find((n) => n.id === selectedNodeId);
+        if (node) {
+          addNode({
+            ...node,
+            id: generateBlockId(node.type as BlockType),
+            position: { x: node.position.x + 30, y: node.position.y + 30 },
+          });
+        }
+        return;
+      }
+      // Space → fit view
+      if (e.key === " ") {
+        e.preventDefault();
+        fitView({ padding: 0.2 });
+      }
+    }
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedNodeId, isRunning, copilotOpen, nodes]);
 
   // ── Load workflow ─────────────────────────────────────────────────────────
 
@@ -113,7 +176,7 @@ function CanvasInner({ workflowId }: { workflowId: string }) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [workflowId]);
 
-  // ── Auto-save when store changes ──────────────────────────────────────────
+  // ── Auto-save ─────────────────────────────────────────────────────────────
 
   useEffect(() => {
     if (isSaved || storeId !== workflowId) return;
@@ -124,7 +187,7 @@ function CanvasInner({ workflowId }: { workflowId: string }) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [nodes, edges, workflowName, isSaved]);
 
-  // ── Save handler ──────────────────────────────────────────────────────────
+  // ── Save ──────────────────────────────────────────────────────────────────
 
   async function handleSave(auto = false) {
     if (!auto) setSaveStatus("saving");
@@ -136,63 +199,55 @@ function CanvasInner({ workflowId }: { workflowId: string }) {
     if (res.ok) { setSaved(true); setSaveStatus("saved"); }
   }
 
-  // ── Run workflow ──────────────────────────────────────────────────────────
+  // ── Run ───────────────────────────────────────────────────────────────────
 
   async function handleRun() {
     setRunDialogOpen(false);
+    resetExecution();
     startExecution("pending");
 
-    const res = await fetch("/api/execute", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ workflowId, input: runInput || null }),
-    });
-
-    if (!res.body) return;
-    const reader = res.body.getReader();
-    const decoder = new TextDecoder();
-    let buffer = "";
-
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      buffer += decoder.decode(value, { stream: true });
-      const parts = buffer.split("\n\n");
-      buffer = parts.pop() ?? "";
-
-      for (const part of parts) {
-        const eventLine = part.split("\n").find((l) => l.startsWith("event:"));
-        const dataLine  = part.split("\n").find((l) => l.startsWith("data:"));
-        if (!eventLine || !dataLine) continue;
-
-        const event = eventLine.replace("event:", "").trim();
-        let data: Record<string, unknown>;
-        try { data = JSON.parse(dataLine.replace("data:", "").trim()); } catch { continue; }
-
-        if (event === "execution_start") {
-          startExecution(data.runId as string);
-        } else if (event === "block_status") {
-          updateBlockStatus(data.blockId as string, {
-            status: data.status as "pending" | "running" | "completed" | "failed" | "skipped",
-            output: data.output,
-            error: data.error as string | undefined,
-            durationMs: data.durationMs as number | undefined,
-          });
-        } else if (event === "block_stream") {
-          appendStreamToken(data.blockId as string, data.token as string);
-        } else if (event === "execution_complete") {
-          completeExecution({
-            status: data.status as "completed" | "failed",
-            output: data.output,
-            durationMs: data.durationMs as number,
-            error: data.error as string | undefined,
-          });
-        }
-      }
+    try {
+      await consumeSSE(
+        "/api/execute",
+        { workflowId, input: runInput || null },
+        {
+          onExecutionStart: (data) => startExecution(data.runId as string),
+          onBlockStatus: (data) =>
+            updateBlockStatus(data.blockId as string, {
+              status: data.status as "pending" | "running" | "completed" | "failed" | "skipped",
+              output: data.output,
+              error: data.error as string | undefined,
+              durationMs: data.durationMs as number | undefined,
+            }),
+          onBlockStream: (data) =>
+            appendStreamToken(data.blockId as string, data.token as string),
+          onExecutionComplete: (data) =>
+            completeExecution({
+              status: data.status as "completed" | "failed",
+              output: data.output,
+              durationMs: data.durationMs as number,
+              error: data.error as string | undefined,
+            }),
+          onExecutionError: (data) =>
+            completeExecution({
+              status: "failed",
+              output: null,
+              durationMs: 0,
+              error: data.error as string,
+            }),
+        },
+      );
+    } catch (e) {
+      completeExecution({
+        status: "failed",
+        output: null,
+        durationMs: 0,
+        error: e instanceof Error ? e.message : "Unknown error",
+      });
     }
   }
 
-  // ── Drag-and-drop onto canvas ─────────────────────────────────────────────
+  // ── Drag-and-drop ─────────────────────────────────────────────────────────
 
   const onDragOver = useCallback((e: React.DragEvent) => {
     e.preventDefault();
@@ -203,11 +258,9 @@ function CanvasInner({ workflowId }: { workflowId: string }) {
     e.preventDefault();
     const blockType = e.dataTransfer.getData("application/flowpilot-block-type") as BlockType;
     if (!blockType) return;
-
     const position = screenToFlowPosition({ x: e.clientX, y: e.clientY });
-    const id = generateBlockId(blockType);
     addNode({
-      id,
+      id: generateBlockId(blockType),
       type: blockType,
       position,
       data: { label: BLOCK_LABELS[blockType], config: DEFAULT_CONFIGS[blockType] },
@@ -252,14 +305,12 @@ function CanvasInner({ workflowId }: { workflowId: string }) {
     <div className="flex flex-col h-screen bg-background overflow-hidden">
       {/* ── Top bar ── */}
       <header className="flex items-center gap-4 px-4 py-2.5 border-b border-border bg-background z-20 shrink-0">
-        {/* Logo */}
         <Link href="/" className="flex items-center gap-2 shrink-0">
           <div className="flex items-center justify-center w-7 h-7 rounded-md bg-primary text-primary-foreground font-bold text-xs">F</div>
           <span className="font-semibold text-sm text-foreground">FlowPilot</span>
         </Link>
 
-        {/* Nav tabs */}
-        <nav className="flex items-center gap-1 border-b-0">
+        <nav className="flex items-center gap-1">
           {["Canvas", "Datasets", "Deployment"].map((tab) => (
             <button
               key={tab}
@@ -274,7 +325,6 @@ function CanvasInner({ workflowId }: { workflowId: string }) {
           ))}
         </nav>
 
-        {/* Center search */}
         <div className="flex-1 max-w-xs mx-auto relative">
           <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground pointer-events-none" />
           <Input
@@ -283,8 +333,25 @@ function CanvasInner({ workflowId }: { workflowId: string }) {
           />
         </div>
 
-        {/* Right actions */}
         <div className="flex items-center gap-2 ml-auto shrink-0">
+          {/* Running indicator */}
+          {isRunning && (
+            <div className="flex items-center gap-2 px-3 py-1.5 rounded-md bg-violet-500/15 border border-violet-500/30">
+              <span className="w-2 h-2 rounded-full bg-violet-400 animate-pulse" />
+              <span className="text-xs text-violet-300 font-medium">Running…</span>
+            </div>
+          )}
+
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => setCopilotOpen((o) => !o)}
+            className={`h-8 px-3 gap-1.5 text-sm ${copilotOpen ? "text-violet-400 bg-violet-500/10" : "text-muted-foreground hover:text-foreground"}`}
+          >
+            <Sparkles className="w-3.5 h-3.5" />
+            Copilot
+          </Button>
+
           <Button
             variant="outline"
             size="sm"
@@ -349,12 +416,7 @@ function CanvasInner({ workflowId }: { workflowId: string }) {
             fitView
             className="!bg-transparent"
           >
-            <Background
-              variant={BackgroundVariant.Dots}
-              gap={24}
-              size={1}
-              color="#27272f"
-            />
+            <Background variant={BackgroundVariant.Dots} gap={24} size={1} color="#27272f" />
             <MiniMap
               position="bottom-left"
               style={{ background: "#0d0d14", border: "1px solid #27272f" }}
@@ -367,9 +429,54 @@ function CanvasInner({ workflowId }: { workflowId: string }) {
               showInteractive={false}
             />
           </ReactFlow>
+
+          {/* Empty state */}
+          {nodes.length === 0 && (
+            <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none z-10 select-none">
+              <p className="text-muted-foreground/40 text-sm font-medium tracking-wide">
+                Drag blocks from the left panel or use the{" "}
+                <span className="text-violet-400/60">AI Copilot</span> to get started
+              </p>
+            </div>
+          )}
+
+          {/* Keyboard shortcuts hint */}
+          <div className="absolute bottom-3 right-3 z-10">
+            <button
+              onClick={() => setShortcutsOpen((o) => !o)}
+              className="w-7 h-7 rounded-full border border-border bg-[#13131f]/80 backdrop-blur-sm flex items-center justify-center text-muted-foreground hover:text-foreground hover:border-zinc-500 transition-colors"
+            >
+              <Keyboard className="w-3.5 h-3.5" />
+            </button>
+            {shortcutsOpen && (
+              <div className="absolute bottom-9 right-0 bg-[#13131f] border border-border rounded-xl p-3 w-56 shadow-xl text-[11px] space-y-1.5">
+                <p className="text-[9px] font-bold uppercase tracking-widest text-muted-foreground mb-2">Keyboard Shortcuts</p>
+                {[
+                  ["⌘S", "Save"],
+                  ["⌘Enter", "Run workflow"],
+                  ["⌘D", "Duplicate node"],
+                  ["Del", "Delete node"],
+                  ["Space", "Fit view"],
+                  ["Esc", "Deselect / close"],
+                ].map(([key, label]) => (
+                  <div key={key} className="flex items-center justify-between gap-3">
+                    <span className="text-muted-foreground">{label}</span>
+                    <kbd className="px-1.5 py-0.5 rounded bg-secondary border border-border text-foreground font-mono">{key}</kbd>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Copilot panel — slides up from bottom of canvas */}
+          {copilotOpen && <CopilotPanel onClose={() => setCopilotOpen(false)} />}
         </main>
 
-        {selectedNodeId && <BlockConfigPanel />}
+        {/* Right panel: run log during/after execution, config panel otherwise */}
+        {showRunLog
+          ? <RunLogPanel />
+          : selectedNodeId && <BlockConfigPanel />
+        }
       </div>
 
       {/* ── Run dialog ── */}
@@ -378,7 +485,7 @@ function CanvasInner({ workflowId }: { workflowId: string }) {
           <DialogHeader>
             <DialogTitle>Run Workflow</DialogTitle>
             <DialogDescription className="text-muted-foreground">
-              Provide input text for the Starter node. This will be passed as the workflow&apos;s initial input.
+              Provide input text for the Starter node.
             </DialogDescription>
           </DialogHeader>
           <Textarea
@@ -400,7 +507,7 @@ function CanvasInner({ workflowId }: { workflowId: string }) {
   );
 }
 
-// ─── Outer page wraps with ReactFlowProvider ─────────────────────────────────
+// ─── Outer page ───────────────────────────────────────────────────────────────
 
 export default function WorkflowPage() {
   const params = useParams<{ id: string }>();

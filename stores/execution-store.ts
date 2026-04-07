@@ -19,7 +19,9 @@ export interface ExecutionResult {
 interface ExecutionState {
   isRunning: boolean;
   runId: string | null;
+  startTime: number | null;
   blockStatuses: Record<string, BlockState>;
+  blockOrder: string[];
   streamingTokens: Record<string, string>;
   executionResult: ExecutionResult | null;
 
@@ -33,15 +35,30 @@ interface ExecutionState {
 export const useExecutionStore = create<ExecutionState>((set) => ({
   isRunning: false,
   runId: null,
+  startTime: null,
   blockStatuses: {},
+  blockOrder: [],
   streamingTokens: {},
   executionResult: null,
 
   startExecution: (runId) =>
-    set({ isRunning: true, runId, blockStatuses: {}, streamingTokens: {}, executionResult: null }),
+    set({
+      isRunning: true,
+      runId,
+      startTime: Date.now(),
+      blockStatuses: {},
+      blockOrder: [],
+      streamingTokens: {},
+      executionResult: null,
+    }),
 
   updateBlockStatus: (blockId, state) =>
-    set((s) => ({ blockStatuses: { ...s.blockStatuses, [blockId]: state } })),
+    set((s) => ({
+      blockStatuses: { ...s.blockStatuses, [blockId]: state },
+      blockOrder: s.blockOrder.includes(blockId)
+        ? s.blockOrder
+        : [...s.blockOrder, blockId],
+    })),
 
   appendStreamToken: (blockId, token) =>
     set((s) => ({
@@ -55,5 +72,13 @@ export const useExecutionStore = create<ExecutionState>((set) => ({
     set({ isRunning: false, executionResult: result }),
 
   resetExecution: () =>
-    set({ isRunning: false, runId: null, blockStatuses: {}, streamingTokens: {}, executionResult: null }),
+    set({
+      isRunning: false,
+      runId: null,
+      startTime: null,
+      blockStatuses: {},
+      blockOrder: [],
+      streamingTokens: {},
+      executionResult: null,
+    }),
 }));

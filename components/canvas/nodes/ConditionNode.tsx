@@ -1,10 +1,11 @@
 "use client";
 
+import { memo } from "react";
 import { GitBranch } from "lucide-react";
 import type { AnyNodeProps } from "./BaseNode";
 import { BaseNode } from "./BaseNode";
 
-export function ConditionNode(props: AnyNodeProps) {
+export const ConditionNode = memo(function ConditionNode(props: AnyNodeProps) {
   const { expression = "" } = props.data.config as { expression?: string };
 
   return (
@@ -29,4 +30,4 @@ export function ConditionNode(props: AnyNodeProps) {
       </div>
     </BaseNode>
   );
-}
+});

@@ -19,7 +19,19 @@ interface BaseNodeProps {
   hasInput?: boolean;
   hasOutput?: boolean;
   outputHandles?: { id: string; label: string; position: number }[];
+  /** Pass true from LLMNode so streaming content gets expanded treatment */
+  isLLM?: boolean;
 }
+
+const GLOW_CLASS: Record<string, string> = {
+  "#22C55E": "node-running-green",
+  "#8B5CF6": "node-running-purple",
+  "#3B82F6": "node-running-blue",
+  "#EAB308": "node-running-yellow",
+  "#F97316": "node-running-orange",
+  "#14B8A6": "node-running-teal",
+  "#EF4444": "node-running-red",
+};
 
 export function BaseNode({
   nodeProps,
@@ -30,33 +42,41 @@ export function BaseNode({
   hasInput = true,
   hasOutput = true,
   outputHandles,
+  isLLM = false,
 }: BaseNodeProps) {
   const { id, selected } = nodeProps;
   const data = nodeProps.data as WorkflowNodeData;
-  const { blockStatuses, streamingTokens } = useExecutionStore();
+  const { blockStatuses, streamingTokens, isRunning } = useExecutionStore();
   const blockState = blockStatuses[id];
   const status = blockState?.status;
-  const streaming = streamingTokens[id];
+  const streaming = streamingTokens[id] ?? "";
 
-  const borderClass =
+  const isPending = isRunning && !status;
+  const glowClass = GLOW_CLASS[accentColor] ?? "node-running-purple";
+
+  const borderStyle =
     status === "running"
-      ? "border-yellow-400 shadow-[0_0_12px_rgba(250,204,21,0.4)] animate-pulse"
+      ? { borderColor: accentColor }
       : status === "completed"
-        ? "border-emerald-500 shadow-[0_0_10px_rgba(16,185,129,0.3)]"
+        ? { borderColor: "#22C55E", boxShadow: "0 0 10px rgba(34,197,94,0.25)" }
         : status === "failed"
-          ? "border-red-500 shadow-[0_0_10px_rgba(239,68,68,0.3)]"
+          ? { borderColor: "#EF4444", boxShadow: "0 0 10px rgba(239,68,68,0.25)" }
           : status === "skipped"
-            ? "border-zinc-600 opacity-60"
+            ? { borderColor: "#3f3f46", opacity: 0.45 }
             : selected
-              ? "border-primary shadow-[0_0_12px_rgba(99,102,241,0.3)]"
-              : "border-border hover:border-zinc-600";
+              ? { borderColor: "#6366f1", boxShadow: "0 0 12px rgba(99,102,241,0.3)" }
+              : {};
 
   return (
     <div
       className={cn(
-        "relative rounded-xl border bg-[#13131f] min-w-[200px] max-w-[220px] overflow-hidden transition-all duration-200",
-        borderClass
+        "relative rounded-xl border bg-[#13131f] min-w-[200px] max-w-[240px] overflow-hidden transition-colors duration-200",
+        status === "running" && glowClass,
+        isPending && "opacity-50",
+        !status && !selected && "border-border hover:border-zinc-600",
+        status === "skipped" && "border-dashed",
       )}
+      style={borderStyle}
     >
       {/* Accent bar */}
       <div className="h-1 w-full" style={{ backgroundColor: accentColor }} />
@@ -88,13 +108,43 @@ export function BaseNode({
       {(children || (status === "running" && streaming)) && (
         <div className="px-3 pb-3 space-y-2">
           {children}
-          {status === "running" && streaming && (
+
+          {/* LLM streaming area */}
+          {isLLM && status === "running" && streaming && (
+            <div className="mt-1 bg-black/40 rounded-lg p-2 border border-violet-500/20">
+              <p className="font-mono text-[10px] text-violet-200 leading-relaxed whitespace-pre-wrap break-words max-h-[120px] overflow-hidden">
+                {streaming.slice(0, 200)}
+                {streaming.length > 200 && "…"}
+                <span className="streaming-cursor ml-0.5 text-violet-400">█</span>
+              </p>
+              <p className="text-[9px] text-violet-400/70 mt-1.5 font-mono">
+                ~{Math.round(streaming.length / 4)} tokens
+              </p>
+            </div>
+          )}
+
+          {/* Non-LLM streaming preview */}
+          {!isLLM && status === "running" && streaming && (
             <div className="text-[10px] text-muted-foreground bg-black/30 rounded p-1.5 max-h-10 overflow-hidden font-mono leading-relaxed">
               {streaming.slice(-80)}
-              <span className="animate-pulse">▊</span>
+              <span className="streaming-cursor">▊</span>
             </div>
           )}
         </div>
+      )}
+
+      {/* Error message */}
+      {status === "failed" && blockState?.error && (
+        <div className="px-3 pb-3">
+          <p className="text-[10px] text-red-400 bg-red-500/10 rounded px-2 py-1 font-mono truncate">
+            {blockState.error}
+          </p>
+        </div>
+      )}
+
+      {/* Completed bottom bar */}
+      {status === "completed" && (
+        <div className="h-0.5 w-full bg-emerald-500/60" />
       )}
 
       {/* Handles */}

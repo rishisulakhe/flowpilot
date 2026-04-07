@@ -1,10 +1,11 @@
 "use client";
 
+import { memo } from "react";
 import { Merge } from "lucide-react";
 import type { AnyNodeProps } from "./BaseNode";
 import { BaseNode } from "./BaseNode";
 
-export function MergeNode(props: AnyNodeProps) {
+export const MergeNode = memo(function MergeNode(props: AnyNodeProps) {
   const { strategy = "combine" } = props.data.config as { strategy?: string };
 
   return (
@@ -19,4 +20,4 @@ export function MergeNode(props: AnyNodeProps) {
       </span>
     </BaseNode>
   );
-}
+});

@@ -1,10 +1,11 @@
 "use client";
 
+import { memo } from "react";
 import { Flag } from "lucide-react";
 import type { AnyNodeProps } from "./BaseNode";
 import { BaseNode } from "./BaseNode";
 
-export function OutputNode(props: AnyNodeProps) {
+export const OutputNode = memo(function OutputNode(props: AnyNodeProps) {
   const { format = "text" } = props.data.config as { format?: string };
 
   return (
@@ -20,4 +21,4 @@ export function OutputNode(props: AnyNodeProps) {
       </span>
     </BaseNode>
   );
-}
+});

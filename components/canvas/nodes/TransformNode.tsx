@@ -1,10 +1,11 @@
 "use client";
 
+import { memo } from "react";
 import { Code2 } from "lucide-react";
 import type { AnyNodeProps } from "./BaseNode";
 import { BaseNode } from "./BaseNode";
 
-export function TransformNode(props: AnyNodeProps) {
+export const TransformNode = memo(function TransformNode(props: AnyNodeProps) {
   const { expression = "" } = props.data.config as { expression?: string };
 
   return (
@@ -21,4 +22,4 @@ export function TransformNode(props: AnyNodeProps) {
       )}
     </BaseNode>
   );
-}
+});

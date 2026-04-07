@@ -1,36 +1,149 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# FlowPilot
+
+**Visual AI Workflow Builder & Orchestration Engine**
+
+FlowPilot is a full-stack visual workflow builder that lets you design, execute, and monitor AI-powered data pipelines in a drag-and-drop canvas. Connect LLM blocks, HTTP requests, conditionals, and transforms into multi-step workflows — then run them with real-time SSE streaming and watch every node light up as it executes.
+
+---
+
+## Features
+
+- **Visual canvas editor** — drag-and-drop 7 block types onto a React Flow canvas with auto-save
+- **7 block types** — Starter, LLM, HTTP Request, Condition (if/else), Transform, Merge, Output
+- **Real-time execution** — SSE streaming shows each node's status live; LLM tokens stream character-by-character into the node
+- **Multi-provider LLM support** — OpenAI, Anthropic, and Google Gemini via AI SDK v6
+- **Condition branching** — `true`/`false` handles route execution down different paths with transitive skip propagation
+- **AI Copilot** — describe a workflow in plain English and have it generated and applied to the canvas instantly
+- **Run Log panel** — live execution timeline with expandable per-step input/output JSON, elapsed timer, and final output
+- **Template library** — 4 pre-built templates (URL Summarizer, Content Classifier, Multi-Model Compare, Webhook Processor)
+- **Keyboard shortcuts** — `⌘S` save, `⌘Enter` run, `⌘D` duplicate, `Del` delete, `Space` fit view
+- **Workflow persistence** — all graphs saved to PostgreSQL via Drizzle ORM with debounced auto-save
+
+---
+
+## Tech Stack
+
+| Layer | Technology |
+|---|---|
+| Framework | Next.js 15 App Router, TypeScript |
+| Runtime | Bun |
+| Styling | Tailwind CSS v4, shadcn/ui |
+| Canvas | React Flow v12 (`@xyflow/react`) |
+| State | Zustand v5 |
+| Database | PostgreSQL (Neon), Drizzle ORM |
+| AI | AI SDK v6 (`ai`, `@ai-sdk/openai`, `@ai-sdk/anthropic`, `@ai-sdk/google`) |
+| Streaming | Server-Sent Events (SSE) via `ReadableStream` |
+| Validation | Zod v4 |
+
+---
 
 ## Getting Started
 
-First, run the development server:
+### Prerequisites
+
+- [Bun](https://bun.sh) (latest)
+- A PostgreSQL database (e.g. [Neon](https://neon.tech) free tier)
+- At least one AI API key: [Google AI Studio](https://aistudio.google.com), [OpenAI](https://platform.openai.com), or [Anthropic](https://console.anthropic.com)
+
+### Installation
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+git clone https://github.com/yourusername/flowpilot.git
+cd flowpilot
+bun install
+
+cp .env.example .env.local
+# Fill in your DATABASE_URL and at least one AI key
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+### Environment Variables
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+```env
+DATABASE_URL=postgresql://...
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+# Add at least one:
+GOOGLE_API_KEY=...
+OPENAI_API_KEY=...
+ANTHROPIC_API_KEY=...
+```
 
-## Learn More
+### Database Setup
 
-To learn more about Next.js, take a look at the following resources:
+```bash
+bunx drizzle-kit generate
+bunx drizzle-kit migrate
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+# Optional: seed 4 template workflows
+bunx tsx --env-file=.env.local scripts/seed-templates.ts
+```
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+### Run
 
-## Deploy on Vercel
+```bash
+bun run dev
+```
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+Open [http://localhost:3000](http://localhost:3000).
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+---
+
+## Project Structure
+
+```
+flowpilot/
+├── app/
+│   ├── api/
+│   │   ├── copilot/        # AI Copilot endpoint
+│   │   ├── execute/        # SSE workflow execution
+│   │   ├── models/         # Available AI models
+│   │   ├── runs/           # Run history CRUD
+│   │   └── workflows/      # Workflow CRUD
+│   ├── workflow/[id]/      # Canvas editor page
+│   └── page.tsx            # Dashboard
+├── components/
+│   ├── canvas/
+│   │   ├── nodes/          # 7 custom React Flow node components
+│   │   ├── edges/          # Custom edge with glow
+│   │   ├── BlockLibrary    # Left panel
+│   │   ├── BlockConfigPanel # Right config panel
+│   │   ├── RunLogPanel     # Live execution log panel
+│   │   └── CopilotPanel    # AI Copilot chat panel
+│   └── dashboard/          # Workflow + template cards
+├── engine/
+│   ├── blocks/             # LLM, HTTP, condition, transform, merge, output handlers
+│   ├── cycle-detector.ts   # DFS three-color cycle detection
+│   ├── topological-sort.ts # Kahn's algorithm for parallel execution levels
+│   ├── template-resolver.ts# {{blockId.output.field}} template interpolation
+│   └── executor.ts         # Main execution orchestrator
+├── stores/
+│   ├── workflow-store.ts   # Zustand: nodes, edges, selection
+│   └── execution-store.ts  # Zustand: run status, streaming tokens
+├── lib/
+│   ├── ai.ts               # AI provider factory
+│   ├── sse.ts              # SSEStream class
+│   └── sse-client.ts       # Frontend SSE consumer
+├── db/
+│   ├── schema.ts           # Drizzle schema
+│   └── index.ts            # DB client
+└── scripts/
+    └── seed-templates.ts   # Template seeder
+```
+
+---
+
+## Keyboard Shortcuts
+
+| Shortcut | Action |
+|---|---|
+| `⌘S` / `Ctrl+S` | Save workflow |
+| `⌘Enter` / `Ctrl+Enter` | Open run dialog |
+| `⌘D` / `Ctrl+D` | Duplicate selected node |
+| `Delete` / `Backspace` | Delete selected node |
+| `Space` | Fit canvas to view |
+| `Escape` | Deselect / close panels |
+
+---
+
+## License
+
+MIT

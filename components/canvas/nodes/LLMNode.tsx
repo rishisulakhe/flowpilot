@@ -1,10 +1,11 @@
 "use client";
 
+import { memo } from "react";
 import { Sparkles } from "lucide-react";
 import type { AnyNodeProps } from "./BaseNode";
 import { BaseNode } from "./BaseNode";
 
-export function LLMNode(props: AnyNodeProps) {
+export const LLMNode = memo(function LLMNode(props: AnyNodeProps) {
   const { provider, model } = props.data.config as { provider?: string; model?: string };
 
   return (
@@ -13,6 +14,7 @@ export function LLMNode(props: AnyNodeProps) {
       accentColor="#8B5CF6"
       typeLabel="LLM Generation"
       icon={<Sparkles className="w-3 h-3 inline" />}
+      isLLM
     >
       {(provider || model) && (
         <div className="flex flex-wrap gap-1">
@@ -30,4 +32,4 @@ export function LLMNode(props: AnyNodeProps) {
       )}
     </BaseNode>
   );
-}
+});

@@ -1,10 +1,11 @@
 "use client";
 
+import { memo } from "react";
 import { Globe } from "lucide-react";
 import type { AnyNodeProps } from "./BaseNode";
 import { BaseNode } from "./BaseNode";
 
-export function HttpNode(props: AnyNodeProps) {
+export const HttpNode = memo(function HttpNode(props: AnyNodeProps) {
   const { method = "GET", url = "" } = props.data.config as { method?: string; url?: string };
   const preview = `${method} ${url || "{{url}}"}`.slice(0, 28);
 
@@ -20,4 +21,4 @@ export function HttpNode(props: AnyNodeProps) {
       </div>
     </BaseNode>
   );
-}
+});
