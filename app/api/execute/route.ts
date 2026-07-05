@@ -1,11 +1,12 @@
 import { type NextRequest } from "next/server";
-import { eq } from "drizzle-orm";
+import { eq, and } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "@/db";
 import { workflows, workflowRuns, workflowRunSteps } from "@/db/schema";
 import { generateId } from "@/lib/utils";
 import { SSEStream } from "@/lib/sse";
 import { executeWorkflow } from "@/engine";
+import { auth } from "@/lib/auth";
 import type { WorkflowGraph } from "@/types/workflow";
 
 const executeSchema = z.object({
@@ -27,12 +28,24 @@ export async function POST(request: NextRequest) {
     });
   }
 
+  // ── Auth check ───────────────────────────────────────────────────────────────
+
+  const session = await auth.api.getSession({
+    headers: request.headers,
+  });
+  if (!session) {
+    return new Response(
+      JSON.stringify({ success: false, error: "Unauthorized" }),
+      { status: 401, headers: { "Content-Type": "application/json" } }
+    );
+  }
+
   // ── Load workflow ───────────────────────────────────────────────────────────
 
   const [workflow] = await db
     .select()
     .from(workflows)
-    .where(eq(workflows.id, body.workflowId));
+    .where(and(eq(workflows.id, body.workflowId), eq(workflows.userId, session.user.id)));
 
   if (!workflow) {
     return new Response(

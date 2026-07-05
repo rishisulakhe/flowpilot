@@ -1,8 +1,10 @@
-import { eq, inArray } from "drizzle-orm";
+import { eq, and, inArray } from "drizzle-orm";
 import { db } from "@/db";
 import { workflows, workflowRuns, workflowRunSteps } from "@/db/schema";
 import { updateWorkflowSchema } from "@/lib/validators";
 import { successResponse, errorResponse } from "@/lib/api-response";
+import { auth } from "@/lib/auth";
+import { headers } from "next/headers";
 import type { WorkflowGraph } from "@/types/workflow";
 
 type Params = { params: Promise<{ id: string }> };
@@ -15,11 +17,16 @@ function parseWorkflow(w: typeof workflows.$inferSelect) {
 
 export async function GET(_req: Request, { params }: Params) {
   try {
+    const session = await auth.api.getSession({
+      headers: await headers(),
+    });
+    if (!session) return errorResponse("Unauthorized", 401);
+
     const { id } = await params;
     const [workflow] = await db
       .select()
       .from(workflows)
-      .where(eq(workflows.id, id));
+      .where(and(eq(workflows.id, id), eq(workflows.userId, session.user.id)));
 
     if (!workflow) return errorResponse("Workflow not found", 404);
 
@@ -34,11 +41,16 @@ export async function GET(_req: Request, { params }: Params) {
 
 export async function PUT(request: Request, { params }: Params) {
   try {
+    const session = await auth.api.getSession({
+      headers: await headers(),
+    });
+    if (!session) return errorResponse("Unauthorized", 401);
+
     const { id } = await params;
     const [existing] = await db
       .select()
       .from(workflows)
-      .where(eq(workflows.id, id));
+      .where(and(eq(workflows.id, id), eq(workflows.userId, session.user.id)));
 
     if (!existing) return errorResponse("Workflow not found", 404);
 
@@ -58,7 +70,7 @@ export async function PUT(request: Request, { params }: Params) {
     if (description !== undefined) updates.description = description;
     if (graph !== undefined) updates.graph = JSON.stringify(graph);
 
-    await db.update(workflows).set(updates).where(eq(workflows.id, id));
+    await db.update(workflows).set(updates).where(and(eq(workflows.id, id), eq(workflows.userId, session.user.id)));
 
     const [updated] = await db
       .select()
@@ -76,11 +88,16 @@ export async function PUT(request: Request, { params }: Params) {
 
 export async function DELETE(_req: Request, { params }: Params) {
   try {
+    const session = await auth.api.getSession({
+      headers: await headers(),
+    });
+    if (!session) return errorResponse("Unauthorized", 401);
+
     const { id } = await params;
     const [existing] = await db
       .select()
       .from(workflows)
-      .where(eq(workflows.id, id));
+      .where(and(eq(workflows.id, id), eq(workflows.userId, session.user.id)));
 
     if (!existing) return errorResponse("Workflow not found", 404);
 
@@ -98,7 +115,7 @@ export async function DELETE(_req: Request, { params }: Params) {
       }
 
       await tx.delete(workflowRuns).where(eq(workflowRuns.workflowId, id));
-      await tx.delete(workflows).where(eq(workflows.id, id));
+      await tx.delete(workflows).where(and(eq(workflows.id, id), eq(workflows.userId, session.user.id)));
     });
 
     return successResponse({ deleted: true });
