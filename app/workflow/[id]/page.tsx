@@ -16,8 +16,9 @@ import {
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 
-import { Settings, History, Share2, Play, Save, Search, ArrowLeft, Sparkles, Keyboard } from "lucide-react";
+import { Settings, History, Share2, Play, Save, Search, ArrowLeft, Sparkles, Keyboard, LogOut } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { signOut, useSession } from "@/lib/auth-client";
 import { Input } from "@/components/ui/input";
 import {
   Dialog,
@@ -99,6 +100,16 @@ function CanvasInner({ workflowId }: { workflowId: string }) {
   const [saveStatus, setSaveStatus] = useState<"saved" | "saving" | "unsaved">("saved");
   const [copilotOpen, setCopilotOpen] = useState(false);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
+
+  const { data: session } = useSession();
+  const userInitials = session?.user?.name
+    ? session.user.name
+        .split(" ")
+        .map((n: string) => n[0])
+        .join("")
+        .toUpperCase()
+        .slice(0, 2)
+    : "?";
 
   // Show run log when we have an active or just-completed execution
   const { executionResult } = useExecutionStore();
@@ -375,7 +386,17 @@ function CanvasInner({ workflowId }: { workflowId: string }) {
               <Icon className="w-4 h-4" />
             </Button>
           ))}
-          <div className="w-7 h-7 rounded-full bg-primary/20 border border-primary/30 flex items-center justify-center text-primary text-xs font-semibold select-none">R</div>
+          <div className="w-7 h-7 rounded-full bg-primary/20 border border-primary/30 flex items-center justify-center text-primary text-xs font-semibold select-none">
+            {userInitials}
+          </div>
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => signOut()}
+            className="w-7 h-7 text-muted-foreground hover:text-red-400"
+          >
+            <LogOut className="w-3.5 h-3.5" />
+          </Button>
         </div>
       </header>
 
