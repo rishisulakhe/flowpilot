@@ -15,6 +15,13 @@
       "when": 1774100677405,
       "tag": "0001_lethal_onslaught",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1783261763865,
+      "tag": "0002_outstanding_rocket_racer",
+      "breakpoints": true
     }
   ]
 }

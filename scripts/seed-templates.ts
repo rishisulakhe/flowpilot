@@ -241,6 +241,7 @@ async function main() {
     const ts = now();
     await db.insert(workflows).values({
       id: tpl.id,
+      userId: "system_migration",
       name: tpl.name,
       description: tpl.description,
       graph: JSON.stringify(tpl.graph),
