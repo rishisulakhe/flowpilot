@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -9,6 +10,7 @@ import { Label } from "@/components/ui/label";
 import { signIn } from "@/lib/auth-client";
 
 export default function SignInPage() {
+  const router = useRouter();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
@@ -22,19 +24,23 @@ export default function SignInPage() {
     const { error: signInError } = await signIn.email({
       email,
       password,
+      callbackURL: "/",
     });
 
     if (signInError) {
       setError(signInError.message ?? "Failed to sign in");
+      setLoading(false);
+    } else {
+      router.push("/");
+      router.refresh();
     }
-
-    setLoading(false);
   }
 
   async function handleGoogleSignIn() {
     setLoading(true);
     await signIn.social({
       provider: "google",
+      callbackURL: "/",
     });
   }
 

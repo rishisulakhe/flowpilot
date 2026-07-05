@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -9,6 +10,7 @@ import { Label } from "@/components/ui/label";
 import { signIn, signUp } from "@/lib/auth-client";
 
 export default function SignUpPage() {
+  const router = useRouter();
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -24,13 +26,16 @@ export default function SignUpPage() {
       name,
       email,
       password,
+      callbackURL: "/",
     });
 
     if (signUpError) {
       setError(signUpError.message ?? "Failed to create account");
+      setLoading(false);
+    } else {
+      router.push("/");
+      router.refresh();
     }
-
-    setLoading(false);
   }
 
   async function handleGoogleSignIn() {
